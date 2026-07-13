@@ -1,0 +1,52 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+    content: [
+        './app/**/*.{js,jsx,ts,tsx}',
+        './components/**/*.{js,jsx,ts,tsx}',
+        './lib/**/*.{js,jsx}',
+    ],
+    theme: {
+        extend: {
+            colors: {
+                accent: '#ffb1c0',
+                'accent-light': '#ffd9df',
+                'accent-dark': '#90003d',
+                'pink-neon': '#ff4c83',
+                'cyan-neon': '#00eefc',
+                primary: '#ffb1c0',
+                secondary: '#d3fbff',
+                tertiary: '#d1bcff',
+                background: '#131317',
+                surface: '#131317',
+                'primary-container': '#ff4c83',
+                'secondary-container': '#00eefc',
+                'tertiary-container': '#a178ff',
+                'on-surface-variant': '#e4bdc3',
+                'surface-container-lowest': '#0e0e12',
+                'surface-container-low': '#1b1b1f',
+                'surface-container': '#1f1f23',
+                'surface-container-high': '#2a292e',
+                'surface-container-highest': '#353439',
+                'on-surface': '#e4e1e7',
+                'on-background': '#e4e1e7',
+                green: { DEFAULT: '#10b981', light: '#34d399' },
+                amber: { DEFAULT: '#f59e0b' },
+                red: { DEFAULT: '#ef4444' },
+                blue: { DEFAULT: '#00eefc' },
+                bg: {
+                    primary: '#131317',
+                    secondary: '#1f1f23',
+                    card: 'rgba(255,255,255,0.04)',
+                },
+            },
+            fontFamily: {
+                sans: ['Inter', 'sans-serif'],
+                'display-xl': ['Sora', 'sans-serif'],
+                'headline-lg': ['Sora', 'sans-serif'],
+                'label-caps': ['Space Grotesk', 'sans-serif'],
+                'body-md': ['Inter', 'sans-serif'],
+            },
+        },
+    },
+    plugins: [],
+};
