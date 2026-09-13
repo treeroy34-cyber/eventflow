@@ -175,8 +175,19 @@ const startServer = async () => {
         console.log('✅ MongoDB connected');
     } catch (err) {
         console.error('❌ MongoDB connection failed:', err.message);
-        console.error('   → Check your MONGODB_URI in backend/.env');
-        process.exit(1);
+        console.warn('⚠️ Falling back to in-memory MongoDB for local development.');
+
+        try {
+            const { MongoMemoryServer } = require('mongodb-memory-server');
+            const mongod = await MongoMemoryServer.create();
+            mongoUri = mongod.getUri();
+            await mongoose.connect(mongoUri);
+            console.log('✅ Fallback in-memory MongoDB ready');
+        } catch (fallbackErr) {
+            console.error('❌ Fallback MongoDB failed:', fallbackErr.message);
+            console.error('   → Check your MONGODB_URI in backend/.env');
+            process.exit(1);
+        }
     }
 
     app.listen(PORT, () => {
