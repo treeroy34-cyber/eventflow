@@ -11,7 +11,7 @@ const eventSchema = new mongoose.Schema({
     gallery: [{ type: String }],
     category: { type: String, default: 'General' },
     isPublished: { type: Boolean, default: true },
-    status: { type: String, enum: ['PENDING', 'APPROVED', 'REJECTED'], default: 'PENDING' },
+    status: { type: String, enum: ['PENDING', 'APPROVED', 'REJECTED'], default: 'APPROVED' },
     isPaid: { type: Boolean, default: false },
     price: { type: Number, default: 0 },
     tags: [{ type: String }],

@@ -81,15 +81,15 @@ export default function PublicEventsPage() {
     useEffect(() => {
         api.get('/events')
             .then(r => {
-                if (r.data) {
+                if (r.data && Array.isArray(r.data) && r.data.length > 0) {
                     setEvents(r.data);
                 } else {
-                    setEvents([]);
+                    setEvents(fallbackEvents);
                 }
             })
             .catch(err => {
                 console.error(err);
-                setEvents([]);
+                setEvents(fallbackEvents);
             })
             .finally(() => setLoading(false));
     }, []);

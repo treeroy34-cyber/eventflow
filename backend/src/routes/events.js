@@ -7,7 +7,7 @@ const { protect, restrictTo, restrictToSuperAdmin } = require('../middleware/aut
 // GET /api/events - Public: list all published events (optionally filter by org)
 router.get('/', async (req, res, next) => {
     try {
-        const filter = { isPublished: true, status: 'APPROVED' };
+        const filter = { isPublished: true, status: { $ne: 'REJECTED' } };
         if (req.query.orgSlug) {
             const Organization = require('../models/Organization');
             const org = await Organization.findOne({ slug: req.query.orgSlug });
@@ -88,6 +88,8 @@ router.post('/', protect, restrictTo('ADMIN'), async (req, res, next) => {
             capacity: parseInt(capacity), image, category,
             gallery: Array.isArray(gallery) ? gallery : [],
             isPaid: !!isPaid, price: isPaid ? Number(price) : 0,
+            status: 'APPROVED',
+            isPublished: true,
             orgId: req.orgId, createdBy: req.user._id
         });
         res.status(201).json(event);
@@ -109,10 +111,8 @@ router.put('/:id', protect, restrictTo('ADMIN'), async (req, res, next) => {
             isPaid: !!isPaid, price: isPaid ? Number(price) : 0
         });
 
-        // Security: If a standard admin/user edits an event, revert its status to PENDING
-        const isUserSuperAdmin = req.user.isSuperAdmin === true || req.user.email === 'tasqrrr315@gmail.com';
-        if (!isUserSuperAdmin) {
-            event.status = 'PENDING';
+        if (event.status !== 'REJECTED') {
+            event.status = 'APPROVED';
         }
 
         await event.save();
