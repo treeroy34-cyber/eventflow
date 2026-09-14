@@ -39,6 +39,30 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Serverless MongoDB Connection Middleware (Vercel)
+let isDbConnected = false;
+const ensureDbConnected = async () => {
+    if (isDbConnected && mongoose.connection.readyState === 1) return;
+    let mongoUri = process.env.MONGODB_URI;
+    if (mongoUri && mongoUri.startsWith('mongodb+srv://')) {
+        mongoUri = await buildDirectUri(mongoUri);
+    }
+    if (mongoUri) {
+        await mongoose.connect(mongoUri);
+        isDbConnected = true;
+    }
+};
+
+app.use(async (req, res, next) => {
+    try {
+        await ensureDbConnected();
+        next();
+    } catch (err) {
+        console.error('Serverless DB Connection Error:', err);
+        next();
+    }
+});
+
 // Serve static files from the public directory
 app.use('/uploads', express.static(path.join(__dirname, '../../public/uploads')));
 app.use(express.static(path.join(__dirname, '../public')));
