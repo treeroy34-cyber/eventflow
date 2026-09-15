@@ -1,5 +1,12 @@
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
+
 const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+const path = require('path');
 const { exec } = require('child_process');
+
+dotenv.config({ path: path.join(__dirname, '../backend/.env') });
 
 const resolveAtlasSrv = (srvHost) => {
     return new Promise((resolve) => {
@@ -16,47 +23,57 @@ const resolveAtlasSrv = (srvHost) => {
     });
 };
 
-async function checkDatabase() {
-    try {
-        const srvHost = "cluster0.dwfz1ql.mongodb.net";
-        const shards = await resolveAtlasSrv(srvHost);
-        console.log("Resolved shards:", shards);
+const buildDirectUri = async (srvUri) => {
+    const m = srvUri.match(/^mongodb\+srv:\/\/([^@]+)@([^/?]+)(\/[^?]*)?(\?.*)?$/);
+    if (!m) return srvUri;
 
-        let uri;
-        if (shards && shards.length > 0) {
-            const hostList = shards.map(h => `${h}:27017`).join(',');
-            uri = `mongodb://tasqrrr315_db_user:JAHgY6Y7u1UAwZPv@${hostList}/eventflow?ssl=true&authSource=admin&retryWrites=true&w=majority`;
-        } else {
-            uri = "mongodb+srv://tasqrrr315_db_user:JAHgY6Y7u1UAwZPv@cluster0.dwfz1ql.mongodb.net/eventflow?retryWrites=true&w=majority&appName=Cluster0";
-        }
+    const credentials = m[1];
+    const srvHost = m[2];
+    const db = (m[3] || '/').replace(/^\//, '') || 'eventflow';
 
-        console.log("Connecting with resolved URI...");
-        await mongoose.connect(uri);
-        console.log("✅ Successfully Connected to MongoDB Atlas!");
+    console.log('🔍 Resolving Atlas SRV records via OS nslookup...');
+    const shards = await resolveAtlasSrv(srvHost);
 
-        const db = mongoose.connection.db;
-        const collections = await db.listCollections().toArray();
-        console.log("\nCollections in DB:", collections.map(c => c.name));
-
-        if (collections.some(c => c.name === 'events')) {
-            const events = await db.collection('events').find({}).toArray();
-            console.log(`\nFound ${events.length} total events in 'events' collection:`);
-            events.forEach((evt, idx) => {
-                console.log(`\nEvent #${idx + 1}:`);
-                console.log(`  ID: ${evt._id}`);
-                console.log(`  Title: ${evt.title}`);
-                console.log(`  Status: ${evt.status}`);
-                console.log(`  IsPublished: ${evt.isPublished}`);
-                console.log(`  Created At: ${evt.createdAt}`);
-            });
-        } else {
-            console.log("Collection 'events' does not exist yet in MongoDB Atlas.");
-        }
-
-        await mongoose.disconnect();
-    } catch (err) {
-        console.error("Database check error:", err);
+    if (!shards || shards.length === 0) {
+        console.warn('⚠️ Could not resolve SRV records — using original URI');
+        return srvUri;
     }
+
+    const hostList = shards.map(h => `${h}:27017`).join(',');
+    return `mongodb://${credentials}@${hostList}/${db}?ssl=true&authSource=admin&retryWrites=true&w=majority`;
+};
+
+async function testAtlasSrv() {
+    let rawUri = process.env.MONGODB_URI;
+    const m = rawUri.match(/^mongodb\+srv:\/\/([^:]+):([^@]+)@([^/?]+)\/([^?]+)/);
+    const user = m[1]; const pass = m[2]; const srvHost = m[3]; const db = m[4];
+
+    const shards = await resolveAtlasSrv(srvHost);
+    const hostList = shards.map(h => `${h}:27017`).join(',');
+    const directUri = `mongodb://${user}:${encodeURIComponent(pass)}@${hostList}/${db}?ssl=true&authSource=admin&retryWrites=true&w=majority`;
+
+    await mongoose.connect(directUri);
+    console.log("✅ Successfully connected to MongoDB Atlas!");
+    const dbObj = mongoose.connection.db;
+    const collections = await dbObj.listCollections().toArray();
+    console.log(`Database '${db}' has ${collections.length} collection(s):`, collections.map(c => c.name));
+
+    await mongoose.disconnect();
+    process.exit(0);
+
+
 }
 
-checkDatabase();
+testAtlasSrv();
+
+
+
+
+
+
+
+
+
+
+
+

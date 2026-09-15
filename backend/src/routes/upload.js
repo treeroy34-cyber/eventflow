@@ -1,57 +1,98 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const cloudinary = require('../config/cloudinary');
+const path = require('path');
+const fs = require('fs');
 const { protect, restrictTo } = require('../middleware/auth');
 
-// Configure Cloudinary storage
-const storage = new CloudinaryStorage({
-    cloudinary: cloudinary,
-    params: {
-        folder: 'eventflow', // Folder name in Cloudinary
-        allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-    },
-});
+const isCloudinaryConfigured = !!(
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
+);
+
+let storage;
+
+if (isCloudinaryConfigured) {
+    const { CloudinaryStorage } = require('multer-storage-cloudinary');
+    const cloudinary = require('../config/cloudinary');
+    storage = new CloudinaryStorage({
+        cloudinary: cloudinary,
+        params: {
+            folder: 'eventflow',
+            allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+        },
+    });
+} else {
+    const uploadDirs = [
+        path.join(__dirname, '../../../frontend/public/uploads'),
+        path.join(__dirname, '../../public/uploads')
+    ];
+    uploadDirs.forEach(dir => {
+        if (!fs.existsSync(dir)) {
+            try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+        }
+    });
+
+    storage = multer.diskStorage({
+        destination: (req, file, cb) => {
+            cb(null, uploadDirs[0]);
+        },
+        filename: (req, file, cb) => {
+            const ext = path.extname(file.originalname).toLowerCase();
+            const safeName = `event_${Date.now()}_${Math.round(Math.random() * 1E6)}${ext}`;
+            cb(null, safeName);
+        }
+    });
+}
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-// POST /api/upload - Upload an image to Cloudinary (Admin only)
-router.post('/', protect, restrictTo('ADMIN'), upload.single('image'), (req, res, next) => {
+const getFileUrl = (file) => {
+    if (!file) return null;
+    if (file.path && file.path.startsWith('http')) return file.path;
     try {
+        const backendUploadDir = path.join(__dirname, '../../public/uploads');
+        if (!fs.existsSync(backendUploadDir)) fs.mkdirSync(backendUploadDir, { recursive: true });
+        const destPath = path.join(backendUploadDir, file.filename);
+        if (file.path && file.path !== destPath && fs.existsSync(file.path)) {
+            fs.copyFileSync(file.path, destPath);
+        }
+    } catch (e) {}
+    return `/uploads/${file.filename}`;
+};
+
+// POST /api/upload - Single image upload
+router.post('/', protect, restrictTo('ADMIN'), (req, res, next) => {
+    upload.single('image')(req, res, (err) => {
+        if (err) {
+            console.error('Upload error:', err.message);
+            return res.status(400).json({ message: err.message || 'File upload error.' });
+        }
         if (!req.file) {
             return res.status(400).json({ message: 'Please upload an image file.' });
         }
-
-        // Cloudinary returns the URL in req.file.path
         res.status(200).json({
             message: 'Image uploaded successfully.',
-            url: req.file.path
+            url: getFileUrl(req.file)
         });
-    } catch (err) {
-        next(err);
-    }
+    });
 });
 
-// POST /api/upload/multiple - Upload multiple images to Cloudinary (Admin only)
+// POST /api/upload/multiple - Multiple images upload
 router.post('/multiple', protect, restrictTo('ADMIN'), (req, res, next) => {
-    // Call multer manually so we can catch middleware-level errors
     upload.array('images', 10)(req, res, (err) => {
         if (err) {
-            console.error('Multer/Cloudinary error:', err);
+            console.error('Multer/Upload error:', err.message);
             return res.status(400).json({ message: err.message || 'File upload error.' });
         }
-
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ message: 'Please upload at least one image.' });
         }
-
-        // Cloudinary returns the URL in each file's path property
-        const urls = req.files.map(file => file.path);
-
+        const urls = req.files.map(file => getFileUrl(file));
         res.status(200).json({
             message: `${urls.length} images uploaded successfully.`,
             urls: urls
@@ -60,3 +101,4 @@ router.post('/multiple', protect, restrictTo('ADMIN'), (req, res, next) => {
 });
 
 module.exports = router;
+

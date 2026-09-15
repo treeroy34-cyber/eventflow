@@ -7,7 +7,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const cron = require('node-cron');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const authRoutes = require('./routes/auth');
 const eventRoutes = require('./routes/events');
@@ -19,7 +20,6 @@ const reportRoutes = require('./routes/reports');
 const uploadRoutes = require('./routes/upload');
 const paymentRoutes = require('./routes/payment');
 const errorHandler = require('./middleware/errorHandler');
-const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -39,17 +39,19 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Serverless MongoDB Connection Middleware (Vercel)
-let isDbConnected = false;
+// Serverless MongoDB Connection Middleware (Vercel & Next.js)
 const ensureDbConnected = async () => {
-    if (isDbConnected && mongoose.connection.readyState === 1) return;
+    if (mongoose.connection.readyState === 1) return;
     let mongoUri = process.env.MONGODB_URI;
+    if (!mongoUri) {
+        dotenv.config({ path: path.join(__dirname, '../.env') });
+        mongoUri = process.env.MONGODB_URI;
+    }
     if (mongoUri && mongoUri.startsWith('mongodb+srv://')) {
         mongoUri = await buildDirectUri(mongoUri);
     }
     if (mongoUri) {
-        await mongoose.connect(mongoUri);
-        isDbConnected = true;
+        await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
     }
 };
 
@@ -58,7 +60,17 @@ app.use(async (req, res, next) => {
         await ensureDbConnected();
         next();
     } catch (err) {
-        console.error('Serverless DB Connection Error:', err);
+        console.error('DB Middleware Connection Error:', err.message);
+        if (mongoose.connection.readyState !== 1) {
+            try {
+                const { MongoMemoryServer } = eval('require')('mongodb-memory-server');
+                const mongod = await MongoMemoryServer.create();
+                await mongoose.connect(mongod.getUri());
+                console.log('✅ Connected to fallback in-memory MongoDB');
+            } catch (fbErr) {
+                console.error('Fallback DB failed:', fbErr.message);
+            }
+        }
         next();
     }
 });
@@ -179,7 +191,7 @@ const startServer = async () => {
     if (!mongoUri || mongoUri.includes('localhost:27017')) {
         console.log('🧪 Starting in-memory MongoDB (dev mode — data resets on restart)...');
         try {
-            const { MongoMemoryServer } = require('mongodb-memory-server');
+            const { MongoMemoryServer } = eval('require')('mongodb-memory-server');
             const mongod = await MongoMemoryServer.create();
             mongoUri = mongod.getUri();
             console.log('✅ In-memory MongoDB ready');
@@ -199,7 +211,16 @@ const startServer = async () => {
         console.log('✅ MongoDB Atlas connected successfully');
     } catch (err) {
         console.error('❌ MongoDB Atlas connection failed:', err.message);
-        console.error('   → Check database username, password, and IP access in MongoDB Atlas.');
+        console.warn('⚠️ Falling back to in-memory MongoDB so the server can run...');
+        try {
+            const { MongoMemoryServer } = eval('require')('mongodb-memory-server');
+            const mongod = await MongoMemoryServer.create();
+            const memoryUri = mongod.getUri();
+            await mongoose.connect(memoryUri);
+            console.log('✅ Fallback in-memory MongoDB connected & ready!');
+        } catch (fallbackErr) {
+            console.error('❌ Fallback in-memory MongoDB failed:', fallbackErr.message);
+        }
     }
 
     app.listen(PORT, () => {

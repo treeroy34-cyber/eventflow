@@ -47,7 +47,12 @@ export default function LoginPage() {
     const handleGoogleLogin = async () => {
         setLoading(true);
         try {
-            const { auth, googleProvider, signInWithPopup } = await import('../../lib/firebase');
+            const { auth, googleProvider, signInWithPopup, isFirebaseConfigured } = await import('../../lib/firebase');
+            if (!isFirebaseConfigured || !auth || !googleProvider) {
+                toast.error('Google Sign-In is not configured yet. Please sign in with your email and password below.');
+                setLoading(false);
+                return;
+            }
             const result = await signInWithPopup(auth, googleProvider);
             const user = result.user;
 

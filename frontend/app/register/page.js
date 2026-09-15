@@ -56,7 +56,12 @@ export default function RegisterOrgPage() {
 
         setLoading(true);
         try {
-            const { auth, googleProvider, signInWithPopup } = await import('../../lib/firebase');
+            const { auth, googleProvider, signInWithPopup, isFirebaseConfigured } = await import('../../lib/firebase');
+            if (!isFirebaseConfigured || !auth || !googleProvider) {
+                toast.error('Google Registration is not configured yet. Please register with your email and password below.');
+                setLoading(false);
+                return;
+            }
             const result = await signInWithPopup(auth, googleProvider);
             const user = result.user;
 

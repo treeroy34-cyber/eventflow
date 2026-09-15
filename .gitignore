@@ -5,5 +5,10 @@ frontend/node_modules/
 frontend/.next/
 git_temp/
 .env
-backend/.env
-frontend/.env.local
+*.env*
+backend/.env*
+frontend/.env*
+public/uploads/
+frontend/public/uploads/
+backend/public/uploads/
+
