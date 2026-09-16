@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import api from '../../../lib/api';
+import api, { getBaseURL } from '../../../lib/api';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import toast from 'react-hot-toast';
 import { Search, Download, CheckCircle, XCircle } from 'lucide-react';
@@ -31,7 +31,7 @@ function RegistrationsContent() {
 
     const handleExport = () => {
         if (!selectedEventId) { alert('Select an event to export CSV.'); return; }
-        window.open(`http://localhost:5000/api/reports/${selectedEventId}/csv`, '_blank');
+        window.open(`${getBaseURL()}/reports/${selectedEventId}/csv`, '_blank');
     };
 
     return (

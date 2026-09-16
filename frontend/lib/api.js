@@ -1,25 +1,26 @@
 'use client';
 import axios from 'axios';
 
-const getBaseURL = () => {
-    if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+export const getBaseURL = () => {
     if (typeof window !== 'undefined') {
-        const origin = window.location.origin;
-        if (origin.includes('localhost')) {
-            return 'http://localhost:5000/api';
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocalhost) {
+            return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
         }
         return '/api';
     }
-    return 'http://localhost:5000/api';
+    return '/api';
 };
 
 const api = axios.create({
-    baseURL: getBaseURL(),
     headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach JWT token from localStorage on every request
+// Attach baseURL dynamically and attach JWT token from localStorage on every request
 api.interceptors.request.use((config) => {
+    if (!config.baseURL) {
+        config.baseURL = getBaseURL();
+    }
     if (typeof window !== 'undefined') {
         const token = localStorage.getItem('ef_token');
         if (token) config.headers.Authorization = `Bearer ${token}`;

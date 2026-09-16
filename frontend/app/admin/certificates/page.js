@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import api from '../../../lib/api';
+import api, { getBaseURL } from '../../../lib/api';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import toast from 'react-hot-toast';
 import { Award, Mail, Download } from 'lucide-react';
@@ -10,23 +10,28 @@ export default function CertificatesPage() {
     const [events, setEvents] = useState([]);
     const [selectedEventId, setSelectedEventId] = useState('');
     const [attendance, setAttendance] = useState([]);
-    const [loadingCerts, setLoadingCerts] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
 
     useEffect(() => {
-        api.get('/events/mine').then(r => { setEvents(r.data); if (r.data.length > 0) setSelectedEventId(r.data[0]._id); });
+        api.get('/events/mine').then(r => {
+            setEvents(r.data);
+            if (r.data.length > 0) setSelectedEventId(r.data[0]._id);
+        }).catch(console.error);
     }, []);
 
     useEffect(() => {
         if (!selectedEventId) return;
-        api.get(`/checkin/${selectedEventId}`).then(r => setAttendance(r.data)).catch(console.error);
+        setLoading(true);
+        api.get(`/checkin/${selectedEventId}`).then(r => {
+            setAttendance(r.data);
+        }).catch(console.error).finally(() => setLoading(false));
     }, [selectedEventId]);
 
     const sendAll = async () => {
-        if (!selectedEventId) return;
         setSending(true);
         try {
-            const { data } = await api.post(`/certificates/${selectedEventId}`);
+            const { data } = await api.post(`/certificates/${selectedEventId}/send-all`);
             toast.success(data.message);
         } catch (err) {
             toast.error(err.response?.data?.message || 'Failed to send certificates.');
@@ -36,7 +41,7 @@ export default function CertificatesPage() {
     };
 
     const downloadOne = (registrationId) => {
-        window.open(`http://localhost:5000/api/certificates/${selectedEventId}/download/${registrationId}`, '_blank');
+        window.open(`${getBaseURL()}/certificates/${selectedEventId}/download/${registrationId}`, '_blank');
     };
 
     return (
