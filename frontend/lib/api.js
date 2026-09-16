@@ -25,6 +25,12 @@ api.interceptors.request.use((config) => {
         const token = localStorage.getItem('ef_token');
         if (token) config.headers.Authorization = `Bearer ${token}`;
     }
+    // Delete Content-Type for FormData so axios/browser automatically adds multipart/form-data boundary
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+        if (config.headers) {
+            delete config.headers['Content-Type'];
+        }
+    }
     return config;
 });
 

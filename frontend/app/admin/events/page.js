@@ -189,12 +189,13 @@ function EventModal({ event, onClose, onSuccess }) {
                                     formData.append('image', file);
                                     try {
                                         toast.loading('Uploading...', { id: 'upload' });
-                                        const res = await api.post('/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+                                        const res = await api.post('/upload', formData);
                                         setForm(p => ({ ...p, image: res.data.url }));
                                         toast.success('Image uploaded!', { id: 'upload' });
                                     } catch (err) {
-                                        console.error(err);
-                                        toast.error('Upload failed. Try entering a URL.', { id: 'upload' });
+                                        console.error('Upload error:', err);
+                                        const msg = err.response?.data?.message || err.message || 'Upload failed. Try entering a URL.';
+                                        toast.error(msg, { id: 'upload' });
                                     }
                                 }} />
                             </label>
@@ -226,12 +227,13 @@ function EventModal({ event, onClose, onSuccess }) {
                                     files.forEach(f => formData.append('images', f));
                                     try {
                                         toast.loading('Uploading gallery...', { id: 'upload-gal' });
-                                        const res = await api.post('/upload/multiple', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+                                        const res = await api.post('/upload/multiple', formData);
                                         setForm(p => ({ ...p, gallery: [...p.gallery, ...res.data.urls] }));
-                                        toast.success('Gallery updated!', { id: 'upload-gal' });
+                                        toast.success('Gallery images uploaded!', { id: 'upload-gal' });
                                     } catch (err) {
-                                        console.error(err);
-                                        toast.error(err.response?.data?.message || 'Gallery upload failed.', { id: 'upload-gal' });
+                                        console.error('Gallery upload error:', err);
+                                        const msg = err.response?.data?.message || err.message || 'Gallery upload failed.';
+                                        toast.error(msg, { id: 'upload-gal' });
                                     }
                                 }} />
                             </label>

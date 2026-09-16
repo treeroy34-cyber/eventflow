@@ -6,9 +6,10 @@ const fs = require('fs');
 const { protect, restrictTo } = require('../middleware/auth');
 
 const isCloudinaryConfigured = !!(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-    process.env.CLOUDINARY_API_KEY &&
-    process.env.CLOUDINARY_API_SECRET
+    (process.env.CLOUDINARY_CLOUD_NAME &&
+     process.env.CLOUDINARY_API_KEY &&
+     process.env.CLOUDINARY_API_SECRET) ||
+    process.env.CLOUDINARY_URL
 );
 
 let storage;
@@ -18,9 +19,11 @@ if (isCloudinaryConfigured) {
     const cloudinary = require('../config/cloudinary');
     storage = new CloudinaryStorage({
         cloudinary: cloudinary,
-        params: {
-            folder: 'eventflow',
-            allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+        params: async (req, file) => {
+            return {
+                folder: 'eventflow',
+                resource_type: 'auto',
+            };
         },
     });
 } else {
@@ -53,7 +56,8 @@ const upload = multer({
 
 const getFileUrl = (file) => {
     if (!file) return null;
-    if (file.path && file.path.startsWith('http')) return file.path;
+    const url = file.path || file.secure_url || file.url;
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) return url;
     try {
         const backendUploadDir = path.join(__dirname, '../../public/uploads');
         if (!fs.existsSync(backendUploadDir)) fs.mkdirSync(backendUploadDir, { recursive: true });
@@ -66,7 +70,7 @@ const getFileUrl = (file) => {
 };
 
 // POST /api/upload - Single image upload
-router.post('/', protect, restrictTo('ADMIN'), (req, res, next) => {
+router.post('/', protect, restrictTo('ADMIN', 'STAFF'), (req, res, next) => {
     upload.single('image')(req, res, (err) => {
         if (err) {
             console.error('Upload error:', err.message);
@@ -83,7 +87,7 @@ router.post('/', protect, restrictTo('ADMIN'), (req, res, next) => {
 });
 
 // POST /api/upload/multiple - Multiple images upload
-router.post('/multiple', protect, restrictTo('ADMIN'), (req, res, next) => {
+router.post('/multiple', protect, restrictTo('ADMIN', 'STAFF'), (req, res, next) => {
     upload.array('images', 10)(req, res, (err) => {
         if (err) {
             console.error('Multer/Upload error:', err.message);
