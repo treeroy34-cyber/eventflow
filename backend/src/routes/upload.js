@@ -4,103 +4,114 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { protect, restrictTo } = require('../middleware/auth');
+const cloudinary = require('../config/cloudinary');
 
-const isCloudinaryConfigured = !!(
+const isCloudinaryConfigured = () => !!(
     (process.env.CLOUDINARY_CLOUD_NAME &&
      process.env.CLOUDINARY_API_KEY &&
      process.env.CLOUDINARY_API_SECRET) ||
     process.env.CLOUDINARY_URL
 );
 
-let storage;
-
-if (isCloudinaryConfigured) {
-    const { CloudinaryStorage } = require('multer-storage-cloudinary');
-    const cloudinary = require('../config/cloudinary');
-    storage = new CloudinaryStorage({
-        cloudinary: cloudinary,
-        params: async (req, file) => {
-            return {
-                folder: 'eventflow',
-                resource_type: 'auto',
-            };
-        },
-    });
-} else {
-    const uploadDirs = [
-        path.join(__dirname, '../../../frontend/public/uploads'),
-        path.join(__dirname, '../../public/uploads')
-    ];
-    uploadDirs.forEach(dir => {
-        if (!fs.existsSync(dir)) {
-            try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
-        }
-    });
-
-    storage = multer.diskStorage({
-        destination: (req, file, cb) => {
-            cb(null, uploadDirs[0]);
-        },
-        filename: (req, file, cb) => {
-            const ext = path.extname(file.originalname).toLowerCase();
-            const safeName = `event_${Date.now()}_${Math.round(Math.random() * 1E6)}${ext}`;
-            cb(null, safeName);
-        }
-    });
-}
-
+// Memory storage buffers the entire file safely in memory
+// This avoids serverless stream piping issues where chunks are dropped or empty
+const storage = multer.memoryStorage();
 const upload = multer({
     storage: storage,
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-const getFileUrl = (file) => {
-    if (!file) return null;
-    const url = file.path || file.secure_url || file.url;
-    if (url && (url.startsWith('http://') || url.startsWith('https://'))) return url;
-    try {
-        const backendUploadDir = path.join(__dirname, '../../public/uploads');
-        if (!fs.existsSync(backendUploadDir)) fs.mkdirSync(backendUploadDir, { recursive: true });
-        const destPath = path.join(backendUploadDir, file.filename);
-        if (file.path && file.path !== destPath && fs.existsSync(file.path)) {
-            fs.copyFileSync(file.path, destPath);
-        }
-    } catch (e) {}
-    return `/uploads/${file.filename}`;
+const uploadBufferToCloudinary = (buffer) => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                folder: 'eventflow',
+                resource_type: 'auto',
+            },
+            (error, result) => {
+                if (error) return reject(error);
+                resolve(result);
+            }
+        );
+        uploadStream.end(buffer);
+    });
 };
 
 // POST /api/upload - Single image upload
-router.post('/', protect, restrictTo('ADMIN', 'STAFF'), (req, res, next) => {
-    upload.single('image')(req, res, (err) => {
+router.post('/', protect, restrictTo('ADMIN', 'STAFF'), (req, res) => {
+    upload.single('image')(req, res, async (err) => {
         if (err) {
-            console.error('Upload error:', err.message);
+            console.error('Multer upload error:', err.message);
             return res.status(400).json({ message: err.message || 'File upload error.' });
         }
-        if (!req.file) {
-            return res.status(400).json({ message: 'Please upload an image file.' });
+        if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
+            return res.status(400).json({ message: 'Please select a valid image file.' });
         }
-        res.status(200).json({
-            message: 'Image uploaded successfully.',
-            url: getFileUrl(req.file)
-        });
+
+        try {
+            if (isCloudinaryConfigured()) {
+                const result = await uploadBufferToCloudinary(req.file.buffer);
+                return res.status(200).json({
+                    message: 'Image uploaded successfully.',
+                    url: result.secure_url
+                });
+            } else {
+                const safeName = `event_${Date.now()}_${Math.round(Math.random() * 1E6)}${path.extname(req.file.originalname).toLowerCase()}`;
+                const uploadDir = path.join(__dirname, '../../public/uploads');
+                if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+                fs.writeFileSync(path.join(uploadDir, safeName), req.file.buffer);
+                return res.status(200).json({
+                    message: 'Image uploaded successfully.',
+                    url: `/uploads/${safeName}`
+                });
+            }
+        } catch (uploadErr) {
+            console.error('Cloudinary upload error:', uploadErr);
+            return res.status(400).json({
+                message: uploadErr.message || 'Image upload failed.'
+            });
+        }
     });
 });
 
 // POST /api/upload/multiple - Multiple images upload
-router.post('/multiple', protect, restrictTo('ADMIN', 'STAFF'), (req, res, next) => {
-    upload.array('images', 10)(req, res, (err) => {
+router.post('/multiple', protect, restrictTo('ADMIN', 'STAFF'), (req, res) => {
+    upload.array('images', 10)(req, res, async (err) => {
         if (err) {
-            console.error('Multer/Upload error:', err.message);
+            console.error('Multer multiple upload error:', err.message);
             return res.status(400).json({ message: err.message || 'File upload error.' });
         }
         if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ message: 'Please upload at least one image.' });
+            return res.status(400).json({ message: 'Please select at least one image.' });
         }
-        const urls = req.files.map(file => getFileUrl(file));
-        res.status(200).json({
-            message: `${urls.length} images uploaded successfully.`,
-            urls: urls
-        });
+
+        try {
+            if (isCloudinaryConfigured()) {
+                const uploadPromises = req.files.map(f => uploadBufferToCloudinary(f.buffer));
+                const results = await Promise.all(uploadPromises);
+                return res.status(200).json({
+                    message: `${results.length} images uploaded successfully.`,
+                    urls: results.map(r => r.secure_url)
+                });
+            } else {
+                const uploadDir = path.join(__dirname, '../../public/uploads');
+                if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+                const urls = req.files.map(f => {
+                    const safeName = `event_${Date.now()}_${Math.round(Math.random() * 1E6)}${path.extname(f.originalname).toLowerCase()}`;
+                    fs.writeFileSync(path.join(uploadDir, safeName), f.buffer);
+                    return `/uploads/${safeName}`;
+                });
+                return res.status(200).json({
+                    message: `${urls.length} images uploaded successfully.`,
+                    urls: urls
+                });
+            }
+        } catch (uploadErr) {
+            console.error('Cloudinary multiple upload error:', uploadErr);
+            return res.status(400).json({
+                message: uploadErr.message || 'Gallery images upload failed.'
+            });
+        }
     });
 });
 
