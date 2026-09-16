@@ -95,7 +95,7 @@ router.post('/create-checkout-session', async (req, res, next) => {
         res.json({ url: session.url });
     } catch (err) {
         console.error('Stripe session creation error:', err.message);
-        res.status(500).json({ message: 'Stripe configuration error. Please ensure your Secret Key is valid.' });
+        res.status(500).json({ message: `Stripe error: ${err.message}` });
     }
 });
 
