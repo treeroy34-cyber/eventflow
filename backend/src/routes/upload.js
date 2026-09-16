@@ -21,19 +21,11 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-const uploadBufferToCloudinary = (buffer) => {
-    return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-            {
-                folder: 'eventflow',
-                resource_type: 'auto',
-            },
-            (error, result) => {
-                if (error) return reject(error);
-                resolve(result);
-            }
-        );
-        uploadStream.end(buffer);
+const uploadBufferToCloudinary = async (buffer, mimetype = 'image/jpeg') => {
+    const base64Data = `data:${mimetype};base64,${buffer.toString('base64')}`;
+    return await cloudinary.uploader.upload(base64Data, {
+        folder: 'eventflow',
+        resource_type: 'image'
     });
 };
 
@@ -50,13 +42,13 @@ router.post('/', protect, restrictTo('ADMIN', 'STAFF'), (req, res) => {
 
         try {
             if (isCloudinaryConfigured()) {
-                const result = await uploadBufferToCloudinary(req.file.buffer);
+                const result = await uploadBufferToCloudinary(req.file.buffer, req.file.mimetype);
                 return res.status(200).json({
                     message: 'Image uploaded successfully.',
                     url: result.secure_url
                 });
             } else {
-                const safeName = `event_${Date.now()}_${Math.round(Math.random() * 1E6)}${path.extname(req.file.originalname).toLowerCase()}`;
+                const safeName = `event_${Date.now()}_${Math.round(Math.random() * 1E6)}${path.extname(req.file.originalname || '.jpg').toLowerCase()}`;
                 const uploadDir = path.join(__dirname, '../../public/uploads');
                 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
                 fs.writeFileSync(path.join(uploadDir, safeName), req.file.buffer);
@@ -68,7 +60,8 @@ router.post('/', protect, restrictTo('ADMIN', 'STAFF'), (req, res) => {
         } catch (uploadErr) {
             console.error('Cloudinary upload error:', uploadErr);
             return res.status(400).json({
-                message: uploadErr.message || 'Image upload failed.'
+                message: uploadErr.message || 'Image upload failed.',
+                details: uploadErr.error || uploadErr.message || null
             });
         }
     });
@@ -87,7 +80,7 @@ router.post('/multiple', protect, restrictTo('ADMIN', 'STAFF'), (req, res) => {
 
         try {
             if (isCloudinaryConfigured()) {
-                const uploadPromises = req.files.map(f => uploadBufferToCloudinary(f.buffer));
+                const uploadPromises = req.files.map(f => uploadBufferToCloudinary(f.buffer, f.mimetype));
                 const results = await Promise.all(uploadPromises);
                 return res.status(200).json({
                     message: `${results.length} images uploaded successfully.`,
@@ -97,7 +90,7 @@ router.post('/multiple', protect, restrictTo('ADMIN', 'STAFF'), (req, res) => {
                 const uploadDir = path.join(__dirname, '../../public/uploads');
                 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
                 const urls = req.files.map(f => {
-                    const safeName = `event_${Date.now()}_${Math.round(Math.random() * 1E6)}${path.extname(f.originalname).toLowerCase()}`;
+                    const safeName = `event_${Date.now()}_${Math.round(Math.random() * 1E6)}${path.extname(f.originalname || '.jpg').toLowerCase()}`;
                     fs.writeFileSync(path.join(uploadDir, safeName), f.buffer);
                     return `/uploads/${safeName}`;
                 });
@@ -109,7 +102,8 @@ router.post('/multiple', protect, restrictTo('ADMIN', 'STAFF'), (req, res) => {
         } catch (uploadErr) {
             console.error('Cloudinary multiple upload error:', uploadErr);
             return res.status(400).json({
-                message: uploadErr.message || 'Gallery images upload failed.'
+                message: uploadErr.message || 'Gallery images upload failed.',
+                details: uploadErr.error || uploadErr.message || null
             });
         }
     });
