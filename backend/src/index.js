@@ -26,15 +26,10 @@ const PORT = process.env.PORT || 5000;
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
 app.use(cors({
-    origin: (origin, cb) => {
-        const allowed = process.env.CLIENT_URL || 'http://localhost:3000';
-        if (!origin || process.env.NODE_ENV !== 'production' || origin === allowed) {
-            cb(null, true);
-        } else {
-            cb(new Error('Not allowed by CORS'));
-        }
-    },
-    credentials: true
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
